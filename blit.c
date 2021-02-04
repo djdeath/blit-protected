@@ -52,6 +52,8 @@ struct data {
    uint32_t row_stride, size;
 };
 
+static bool image_protected = true;
+
 static int find_image_memory(struct data *vc, unsigned allowed, bool host, bool protected)
 {
    VkMemoryPropertyFlags flags =
@@ -122,13 +124,11 @@ init_vk(struct data *vc)
                         .sType = VK_STRUCTURE_TYPE_DEVICE_QUEUE_CREATE_INFO,
                         .queueFamilyIndex = 0,
                         .queueCount = 1,
-                        .flags = VK_DEVICE_QUEUE_CREATE_PROTECTED_BIT,
+                        .flags = image_protected ? VK_DEVICE_QUEUE_CREATE_PROTECTED_BIT : 0,
                         .pQueuePriorities = (float []) { 1.0f },
                      },
-                     .enabledExtensionCount = 1,
-                     .ppEnabledExtensionNames = (const char * const []) {
-                        VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-                     },
+                     .enabledExtensionCount = 0,
+                     .ppEnabledExtensionNames = NULL,
                   },
                   NULL,
                   &vc->device);
@@ -143,7 +143,7 @@ init_image(struct data *vc, const char *filename)
    GdkPixbuf *pixbuf = gdk_pixbuf_new_from_file(filename, &error);
 
    if (!pixbuf) {
-      g_error(error->message);
+      g_error("Unable to load image: %s", error->message);
       exit(-1);
    }
 
@@ -198,7 +198,7 @@ init_image(struct data *vc, const char *filename)
                     .samples = 1,
                     .tiling = VK_IMAGE_TILING_OPTIMAL,
                     .usage = VK_IMAGE_USAGE_TRANSFER_SRC_BIT | VK_IMAGE_USAGE_TRANSFER_DST_BIT,
-                    .flags = VK_IMAGE_CREATE_PROTECTED_BIT,
+  		    .flags = image_protected ? VK_IMAGE_CREATE_PROTECTED_BIT : 0,
                  },
                  NULL,
                  &vc->dst_image);
@@ -209,7 +209,7 @@ init_image(struct data *vc, const char *filename)
                     &(VkMemoryAllocateInfo) {
                        .sType = VK_STRUCTURE_TYPE_MEMORY_ALLOCATE_INFO,
                        .allocationSize = requirements.size,
-                       .memoryTypeIndex = find_image_memory(vc, requirements.memoryTypeBits, false /* host */, true /* protected */),
+                       .memoryTypeIndex = find_image_memory(vc, requirements.memoryTypeBits, false /* host */, image_protected /* protected */),
                     },
                     NULL,
                     &vc->dst_image_mem);
@@ -283,7 +283,7 @@ main(int argc, char *argv[])
                           .sType = VK_STRUCTURE_TYPE_COMMAND_POOL_CREATE_INFO,
                           .queueFamilyIndex = 0,
                           .flags = VK_COMMAND_POOL_CREATE_RESET_COMMAND_BUFFER_BIT |
-                                   VK_COMMAND_POOL_CREATE_PROTECTED_BIT,
+				   (image_protected ? VK_COMMAND_POOL_CREATE_PROTECTED_BIT : 0),
                        },
                        NULL,
                        &vc->cmd_pool);
@@ -387,9 +387,14 @@ main(int argc, char *argv[])
 
    vkEndCommandBuffer(cmd_buffer);
 
+   VkProtectedSubmitInfo prot_submit = {
+      .sType = VK_STRUCTURE_TYPE_PROTECTED_SUBMIT_INFO,
+      .protectedSubmit = image_protected,
+   };
    vkQueueSubmit(vc->queue, 1,
                  &(const VkSubmitInfo) {
                     .sType = VK_STRUCTURE_TYPE_SUBMIT_INFO,
+		    .pNext = &prot_submit,
                     .commandBufferCount = 1,
                     .pCommandBuffers = &cmd_buffer,
                  },

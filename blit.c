@@ -259,7 +259,7 @@ write_image_output(struct data *vc, const char *filename)
                                                 NULL);
 
    GError *error = NULL;
-   if (!gdk_pixbuf_save(pixbuf, filename, "png", &error, "quality", "100", NULL))
+   if (!gdk_pixbuf_save(pixbuf, filename, "png", &error, NULL))
       g_error("Could not write output file: %s", error->message);
 
    vkUnmapMemory(vc->device, vc->dst_mem);
